@@ -4,27 +4,13 @@ import numpy as np
 import cv2
 import math
 import pyautogui
+from matplotlib import pyplot as plt
+import util
 
-#выставляем окно с приложением в левый верхний угол
-def set_ldoe_window(w, h):
-    print('Выставляем окно приложения  по координатам...')
-    window_is_moved = False
-    while (not window_is_moved):
-
-        hwnd = win32gui.FindWindow("Qt5154QWindowOwnDCIcon", None)
-        win32gui.MoveWindow(hwnd, 0, 0, w, h, True)
-
-        #check
-        x0, y0, x1, y1 = win32gui.GetWindowRect(hwnd)
-        if (x0 == 0 and y0 == 0 and x1 == w and y1 == h):
-            window_is_moved = True
-            print('\tУспешно')
 
 #скриншот области где миникарта
 def get_minimap_screen():
-    img = pyautogui.screenshot(region=(MINIMAP_START_X, MINIMAP_START_Y, MINIMAP_WIDTH, MINIMAP_HEIGHT))
-    frame = np.array(img)
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    return util.get_window_screen(MINIMAP_START_X, MINIMAP_START_Y, MINIMAP_WIDTH, MINIMAP_HEIGHT)
 
 #получить координаты центра и радиус миникарты
 def get_minimap_param():
@@ -33,19 +19,20 @@ def get_minimap_param():
     frame = np.array(minimap_img)
     hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
 
-    print ("done 1")
-    cv2.imshow('frame', frame)
     hsv_lower_minimap_b = np.array([0, 0, 149])
     hsv_upper_minimap_b = np.array([94, 56, 239])
     mask = cv2.inRange(hsv, hsv_lower_minimap_b, hsv_upper_minimap_b)
-    print("done 1")
-    cv2.imshow('detected circles', mask)
 
-
-    circles = cv2.HoughCircles(mask, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=MINIMAP_MIN_RADIUS, maxRadius=MINIMAP_MAX_RADIUS)
+    circles = cv2.HoughCircles(mask, cv2.HOUGH_GRADIENT, 1,
+                               120, param1=100, param2=10,
+                               minRadius=MINIMAP_MIN_RADIUS, maxRadius=MINIMAP_MAX_RADIUS)
 
     if (circles is None):
         print("ERROR. Завершение программы т.к. миникарта не найдена")
+        cv2.imshow("mask", mask)
+
+        cv2.waitKey(0) & 0xFF
+
         sys.exit()
 
     circles = np.uint16(np.around(circles))
@@ -54,13 +41,27 @@ def get_minimap_param():
     center_y = 0
     min_circle_rad = 9999
 
+    #minimap_paint = frame.copy()
+    #minimap_paint = cv2.cvtColor(minimap_paint, cv2.COLOR_BGR2RGB)
+    minimap_paint = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     for i in circles[0, :]:
         if min_circle_rad > i[2]:
             center_x = i[0]
             center_y = i[1]
             min_circle_rad = i[2]
 
-    return center_x, center_y, min_circle_rad
+        # draw the outer circle
+        cv2.circle(minimap_paint, (i[0], i[1]), i[2], (0, 255, 0), 2)
+        # draw the center of the circle
+        cv2.circle(minimap_paint, (i[0], i[1]), 2, (155, 0, 0), 3)
+
+    cv2.circle(minimap_paint, (center_x, center_y), min_circle_rad, (0, 255, 255), 6)
+
+    cv2.putText(minimap_paint, "r: " + str(min_circle_rad), (center_x + 10, center_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 155, 255), 2,
+                   cv2.LINE_AA)
+
+    #центр карты Х, Центр карты Y, Радиус всей карты, маска, раскрашенная карта
+    return center_x, center_y, min_circle_rad, mask, minimap_paint
 
 
 #получение центра контура с помощью моментов
@@ -166,6 +167,43 @@ def print_mob(frame, mask, min_arclen, text):
 
     cv2.drawContours(frame, contours, -1, (255, 255, 0), 1)
 
+def show_images(titles, images):
+
+    #titles = ['original', 'BINARY', 'BINARY_INV', 'TRUNC', 'TOZERO', 'TOZERO_INV']
+    #images = [img, th1, th2, th3, th4, th5]
+
+    winX = (int) (len(images)/2)
+    winY = (int) (len(images)/winX + 1)
+
+    for i in range(len(images)):
+        img_to_show = cv2.cvtColor(images[i], cv2.COLOR_BGR2RGB)
+        plt.subplot(winX, winY, i + 1), plt.imshow(img_to_show, 'gray')
+        plt.title(titles[i])
+        plt.xticks([]), plt.yticks([])
+
+    plt.show()
+
+
+    #находит все крестики трупов врагов
+def print_dead_enemys(frame):
+
+    #сначала маску hsv потом искать крестики на ней и вычеркивать
+
+    imgrey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+
+    template = cv2.imread('../pic_ldoe/templates/dead_enemy.png', 0)
+    w, h = template.shape[::-1]
+
+    res = cv2.matchTemplate(imgrey, template, cv2.TM_CCOEFF_NORMED)
+
+    threshold = 0.8  # 0.99
+    loc = np.where(res >= threshold)
+
+    for pt in zip(*loc[::-1]):
+        cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0, 255, 255), 2)
+
+    return frame
 
 
 ##################################################################################
@@ -180,8 +218,8 @@ MINIMAP_START_Y = 100    #верхняя левая точка миникарт�
 MINIMAP_WIDTH = 210     # ширина миникарты
 MINIMAP_HEIGHT = 210    # высота миникарты
 
-MINIMAP_MIN_RADIUS = 65
-MINIMAP_MAX_RADIUS = 130
+MINIMAP_MIN_RADIUS = 65 #65
+MINIMAP_MAX_RADIUS = 135 #135
 
 #мобы
 #MOB_VISION_RANGE = 40   #дальность видиния моба - радиус круга вокруг модельки
@@ -195,10 +233,10 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 ########################################################################################
 
 #выставляем окно
-set_ldoe_window(LDOE_WINDOW_WIDTH, LDOE_WINDOW_HEIGHT)
+util.set_ldoe_window(LDOE_WINDOW_WIDTH, LDOE_WINDOW_HEIGHT)
 
 #получаем значения параметров миникарты
-minimap_center_x, minimap_center_y, minimap_radius = get_minimap_param()
+minimap_center_x, minimap_center_y, minimap_radius, minimap_mask, minimap_paint = get_minimap_param()
 
 #дальность видиния моба - радиус круга вокруг модельки
 MOB_VISION_RANGE = int(minimap_radius * 5/12 + minimap_radius / 30)
@@ -215,11 +253,15 @@ while (not emergency_exit):
     mask_neutral = print_neutral(frame, hsv)
     mask_friend = print_friends(frame, hsv)
 
-    cv2.imshow("original", img)
-    cv2.imshow("frame", frame)
-    cv2.imshow("mask_enemy", mask_enemy)
-    cv2.imshow("mask_neutral", mask_neutral)
-    cv2.imshow("mask_friend", mask_friend)
+    titles = ['original', 'frame', 'mask_enemy', 'mask_neutral', 'mask_friend', 'minimap_mask', 'minimap_paint']
+    images = [img, frame, mask_enemy, mask_neutral, mask_friend, minimap_mask, minimap_paint]
+
+    show_images(titles, images)
+    # cv2.imshow("original", img)
+    # cv2.imshow("frame", frame)
+    # cv2.imshow("mask_enemy", mask_enemy)
+    # cv2.imshow("mask_neutral", mask_neutral)
+    # cv2.imshow("mask_friend", mask_friend)
 
     k = cv2.waitKey(0) & 0xFF
 

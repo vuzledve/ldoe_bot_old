@@ -2,7 +2,8 @@ import numpy as np
 import cv2 as cv
 #img = cv.imread('../pic_ldoe/1_neitral_evening_min.png', cv.IMREAD_GRAYSCALE)
 
-img = cv.imread('../pic_ldoe/1_neitral_evening_min.png')
+#img = cv.imread('../pic_ldoe/1_neitral_evening_min.png')
+img = cv.imread('../pic_ldoe/cant_find_minimap.png')
 frame = img.copy()
 hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 
@@ -17,12 +18,15 @@ u_b = np.array([u_h, u_s, u_v])
 
 mask = cv.inRange(hsv, l_b, u_b)
 
+cv.imshow("mask", mask)
+cv.waitKey(0) & 0xFF
 
 assert img is not None, "file could not be read, check with os.path.exists()"
 img = cv.medianBlur(mask,1)
 cimg = cv.cvtColor(img,cv.COLOR_GRAY2BGR)
-circles = cv.HoughCircles(mask, cv.HOUGH_GRADIENT,1,20,
- param1=50,param2=30,minRadius=65,maxRadius=130)
+#cimg = mask.copy()
+circles = cv.HoughCircles(mask, cv.HOUGH_GRADIENT,1,140,
+ param1=100,param2=10,minRadius=90,maxRadius=130)
 
 # Below are the parameters explained in detail
 #
